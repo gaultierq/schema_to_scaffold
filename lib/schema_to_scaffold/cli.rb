@@ -31,6 +31,43 @@ module SchemaToScaffold
       ## Generate scripts from schema
       schema = Schema.new(data)
 
+      table_ids = table_ids_from_opts(schema, opts) || tables_from_input(schema)
+      script = []
+      target = opts[:factory_girl] ? "factory_girl:model" : "scaffold"
+      migration_flag = opts[:migration] ? true : false
+      force_flag = opts[:force] ? true : false
+      table_ids.each do |table_id|
+        script << generate_script(schema, table_id, target, migration_flag, force_flag)
+      end
+      output = script.join("")
+      puts "\nScript for #{target}:\n\n"
+      puts output
+
+      if opts[:clipboard]
+        puts("\n(copied to your clipboard)")
+        Clipboard.new(output).command
+      end
+
+      if opts[:exec]
+        script.each do |s|
+          j = s.join("")
+          puts "executing script: #{j}"
+          exec j
+        end
+      end
+    end
+
+    def self.table_ids_from_opts(schema, opts)
+      t = opts[:table]
+      return unless t
+      table = schema.table(t)
+
+      return [t] if table
+      puts "Could not find table #{t}"
+      exit 1 
+    end
+
+    def self.tables_from_input(schema)
       begin
         raise if schema.table_names.empty?
         puts "\nLoaded tables:"
@@ -43,30 +80,16 @@ module SchemaToScaffold
       end
 
       input = STDIN.gets.strip
+      puts "input is #{input}"
       begin
         tables = schema.select_tables(input)
         raise if tables.empty?
-      rescue
+        tables
+      rescue e
         puts "Not a valid input. #{TABLE_OPTIONS}"
         exit 1
-      rescue Interrupt => e
+      rescue Interrupt
         exit 1
-      end
-
-      script = []
-      target = opts[:factory_girl] ? "factory_girl:model" : "scaffold"
-      migration_flag = opts[:migration] ? true : false
-
-      tables.each do |table_id|
-        script << generate_script(schema, table_id, target, migration_flag)
-      end
-      output = script.join("")
-      puts "\nScript for #{target}:\n\n"
-      puts output
-
-      if opts[:clipboard]
-        puts("\n(copied to your clipboard)")
-        Clipboard.new(output).command
       end
     end
 
@@ -76,6 +99,10 @@ module SchemaToScaffold
       if argv_index = argv.index("-p")
         path = argv.delete_at(argv_index + 1)
         argv.delete('-p')
+      end 
+      if argv_index = argv.index("-t")
+        table = argv.delete_at(argv_index + 1)
+        argv.delete('-t')
       end
 
       args = {
@@ -83,7 +110,10 @@ module SchemaToScaffold
         factory_girl: argv.delete('-f'), # factory_girl instead of scaffold
         migration: argv.delete('-m'),   # generate migrations
         help: argv.delete('-h'),        # check for help flag
-        path: path                      # get path to file(s)
+        path: path,                     # get path to file(s)
+        table: table,
+        exec: argv.delete('-x'),
+        force: argv.delete('--force')
       }
 
       if argv.empty?
@@ -97,10 +127,10 @@ module SchemaToScaffold
 
     ##
     # Generates the rails scaffold script
-    def self.generate_script(schema, table=nil, target, migration_flag)
+    def self.generate_script(schema, table=nil, target, migration_flag, force_flag)
       schema = Schema.new(schema) unless schema.is_a?(Schema)
       return schema.to_script if table.nil?
-      schema.table(table).to_script(target, migration_flag)
+      schema.table(table).to_script(target, migration_flag, force_flag)
     end
 
   end

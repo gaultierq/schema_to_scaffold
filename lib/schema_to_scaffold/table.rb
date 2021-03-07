@@ -11,7 +11,7 @@ module SchemaToScaffold
       @name, @attributes = name, attributes
     end
 
-    def to_script(target, migration_flag)
+    def to_script(target, migration_flag, force_flag)
       begin
         attributes_list = attributes.map(&:to_script).reject { |x| x.nil? || x.empty? }.join(' ')
       rescue => e
@@ -23,6 +23,7 @@ module SchemaToScaffold
       script = []
       script << "rails generate #{target} #{modelize(name)} #{attributes_list}"
       script << " --no-migration" unless migration_flag
+      script << " --force" if force_flag
       script << "\n\n"
       script
     end
